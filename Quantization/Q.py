@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.14.4
 #   kernelspec:
-#     display_name: Quantize
+#     display_name: qe
 #     language: python
-#     name: python3
+#     name: qe
 # ---
 
 # + [markdown] id="KimMZUVqcJ8_"
@@ -70,13 +70,14 @@ import os
 
 
 # +
-server=0
+server=1
+GPU=1
 
-p="/home/ehsan/UvA/Accuracy/Keras/Yolov3/"
+p="/home/ehsan/UvA/Accuracy/Keras/"
 p_server="/home/ehsan/Accuracy/"
 if server:
     p=p_server
-data_dir = p+"Dataset/val2017"
+data_dir = p+"YOLOV3/Dataset/val2017"
 image_size = (608, 608)
 N=300
 
@@ -101,6 +102,12 @@ input_dtype = tf.float32
 output_shape = (1,)
 output_dtype = tf.float32
 
+if GPU:
+    tf.debugging.set_log_device_placement(True)
+    physical_devices = tf.config.list_physical_devices('GPU')
+    print(physical_devices)
+    #tf.config.experimental.set_memory_growth(physical_devices[0], True)
+
 
 
 # +
@@ -114,25 +121,25 @@ def load_model(m=ModelName):
 
 # Define a function to load and preprocess each image
 def preprocess_image(file_path):
-	# Load the image
-	image = tf.io.read_file(file_path)
-	# Decode the JPEG image to a tensor
-	image = tf.image.decode_jpeg(image, channels=3)
-	# Resize the image to the desired size
-	image = tf.image.resize(image, image_size)
-	# Normalize the pixel values to the range [0, 1]
-	image = image / 255.0
-	return image
+    # Load the image
+    image = tf.io.read_file(file_path)
+    # Decode the JPEG image to a tensor
+    image = tf.image.decode_jpeg(image, channels=3)
+    # Resize the image to the desired size
+    image = tf.image.resize(image, image_size)
+    # Normalize the pixel values to the range [0, 1]
+    image = image / 255.0
+    return image
 
 #train_dataset = tf.data.Dataset.from_tensor_slices((images))
 #train_dataset=train_dataset.map(process_image)
 def load_dataset():
-	# Create a list of file paths to the JPEG images
-	file_paths = tf.data.Dataset.list_files(data_dir + "/*.jpg")
-	# Use the map() method to apply the preprocessing function to each image
-	dataset = file_paths.map(preprocess_image)
-	#dataset = dataset.map(lambda x: {'input_1': x})
-	return dataset
+    # Create a list of file paths to the JPEG images
+    file_paths = tf.data.Dataset.list_files(data_dir + "/*.jpg")
+    # Use the map() method to apply the preprocessing function to each image
+    dataset = file_paths.map(preprocess_image)
+    #dataset = dataset.map(lambda x: {'input_1': x})
+    return dataset
 
 
 
@@ -149,7 +156,14 @@ def representative_dataset(dataset):
 	return _data_gen
 '''
 
+# -
 
+
+ops = tf.lite.OpsSet
+
+
+# +
+# ops.*GPU*?
 
 # +
 
@@ -181,7 +195,7 @@ def rep3(_dataset,n=N):
 def quantize(model,_dataset,name=QuantizedName):
     print("\n\n\n\n***************************************************")
     print("quantization...\n")
-    if (os.path.isfile(QuantizedName)):
+    if False and (os.path.isfile(QuantizedName)):
         print(f"loading existed {QuantizedName}")
         with open(name, 'rb') as f:
             quantized_model=f.read()
@@ -191,6 +205,14 @@ def quantize(model,_dataset,name=QuantizedName):
         converter.representative_dataset = tf.lite.RepresentativeDataset(rep(_dataset))
         converter.representative_dataset = rep2(_dataset,N)
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
+        #converter.target_spec.supported_ops = [
+        #    tf.lite.OpsSet.TFLITE_BUILTINS_INT8_GPU 
+        #]
+        #converter.inference_input_type = tf.uint8
+        #converter.inference_output_type = tf.uint8
+        converter.experimental_enable_resource_variables = True
+        converter.target_spec.supported_types = [tf.int8]
+
         quantized_model = converter.convert()
         open(name, "wb").write(quantized_model)
     return quantized_model
@@ -251,20 +273,23 @@ def Analyze(res_file,t=-.33):
     #print(layer_stats[layer_stats['rmse/scale'] > t][['op_name', 'range', 'rmse/scale', 'tensor_name']])
     layer_stats.to_csv(res_file)
 
-def selective_quantize(model,_dataset,t=0.33):
+def selective_quantize(model,_dataset,t=0.33, p=0.5):
     print("\n\n\n\n***************************************************")
     print("selective quantization...\n")
-    if (os.path.isfile(QSelectiveName)):
+    caching=True
+    if (os.path.isfile(QSelectiveName)) and caching:
         print(f'selective quantization: loading existed file {QSelectiveName}')
         with open(QSelectiveName, "rb") as f:
             selective_quantized_model=f.read()
     else:
         print(f'selective_quatize: producing file {QSelectiveName}')
         layer_stats = pd.read_csv(RESULTS_FILE)
-        suspected_layers = list(
-            layer_stats[layer_stats['rmse/scale'] > t]['tensor_name'])
-        suspected_layers.extend(list(layer_stats[:5]['tensor_name']))
-
+        suspected_layers = list(layer_stats[layer_stats['rmse/scale'] > t]['tensor_name'])
+        nn=len(list(layer_stats['tensor_name']))
+        print(f'Number of layers:{nn}, suspected:{len(suspected_layers)}, unquantized first {int(p*nn)} layers')
+        suspected_layers.extend(list(layer_stats[:int(p*nn)]['tensor_name']))
+        print(len(suspected_layers))
+        print(len(list(set(suspected_layers))))
         converter = tf.lite.TFLiteConverter.from_keras_model(model)
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
         converter.representative_dataset = rep(_dataset,N)
@@ -365,10 +390,14 @@ model.summary()
 dataset=load_dataset()
 # Print the first 5 images in the dataset
 for image in dataset.take(5):
-	print(image.shape)
+    print(image.shape)
 
-# +
-calibrated_model=calibrate(model,dataset)
+sq=selective_quantize(model,dataset,t=0.31,p=0.3)
+
+layer_stats = pd.read_csv(RESULTS_FILE)
+print(layer_stats[:int(100)]['tensor_name'])
+
+'''calibrated_model=calibrate(model,dataset)
 
 quantized_model=quantize(model,dataset)
 
@@ -384,4 +413,52 @@ debugger=explore_propogation(calibrated_model,dataset)
 run_debugger(debugger,RESULTS_FILE_Propogate)
 Analyze(RESULTS_FILE_Propogate)
 calibrated_model=calibrate(model,dataset)
-selective_unquantized=explore_combinations(calibrated_model)
+selective_unquantized=explore_combinations(calibrated_model)'''
+
+from tensorflow.lite.python import interpreter as interpreter_wrapper
+import numpy as np
+
+# +
+# %%timeit -n 1 -r 1
+QuantizedName='Yolo_files/1/YoloV3_quztized.tflite'
+model = interpreter_wrapper.Interpreter(model_path=QuantizedName)
+model.allocate_tensors()
+model_format = 'TFLITE'
+model_input_shape=(608,608)
+#Ehsan input shape correctness
+input_details = model.get_input_details()
+output_details = model.get_output_details()
+input_shape = input_details[0]['shape']
+
+n=100
+input_shape[0]=n
+input_shape[1] = model_input_shape[0]
+input_shape[2] = model_input_shape[1]
+model.resize_tensor_input(0, input_shape)
+model.allocate_tensors()
+print(input_shape)
+input_shape=[n,608,608,3]
+input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
+# Set the input tensor to the interpreter
+model.set_tensor(input_details[0]['index'], input_data)
+
+# Run the model on the GPU
+with tf.device('/gpu:1'):
+    model.invoke()
+
+# Get the output tensor from the interpreter
+output_data = model.get_tensor(output_details[0]['index'])
+
+output_data
+
+# +
+# model??
+# -
+
+type(output_data)
+
+# %%timeit
+1+1
+2*3
+
+
