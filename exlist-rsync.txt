@@ -1,0 +1,5 @@
+env_qe/
+YOLOV3/Quantization/result
+YOLOV3/Evaluation/result
+Evaluation/Predicts
+YOLOV3/Quantization/cases

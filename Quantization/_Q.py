@@ -77,18 +77,7 @@ import os
 cur_dir=os.getcwd()
 sys.path.append(cur_dir+'/../Evaluation/')
 import eval_multiThread2 as tt
-# -
 
-
-'''df=pd.read_csv("df.csv",index_col=0)
-df = pd.DataFrame(columns=["name","mAP"])
-df.loc[0]=["a", 3.2]
-df.loc[1]=["b", 4.1]
-df.to_csv("test.csv")
-df2=pd.read_csv("test.csv",index_col=0)
-df2.loc[2]=["c", 5.1]
-df2
-df.loc[71]=["2",3]'''
 
 # +
 server=1
@@ -453,10 +442,9 @@ def generate_indexes(start_conv=-1,end_conv=-1):
             
     _n=len(conv_layers)
     #cases=[ [ conv_layers[start:end+1] for end in range(start,_n) ] for start in range(0,_n) ]
-    #n_cases = [len(case) for case in cases ]
-    #N_cases = sum(n_cases)
     cases=[  list(range(start,end+1))  for start in range(0,_n) for end in range(start,_n)]
-    N_cases = len(cases)
+    n_cases = [len(case) for case in cases ]
+    N_cases = sum(n_cases)
     print(f'Total layers:{len(all_layers)}  Convs:{len(conv_layers)}  number of cases:{N_cases}')
     #flatted_cases=[c for case in cases for c in case]
     last_conv_indx=len(conv_layers)-1
@@ -490,8 +478,7 @@ def run():
     dffile="df.csv"
     if os.path.isfile(dffile):
         df=pd.read_csv(dffile,index_col=0)
-        #i=df.iloc[-1][0]+1
-        i=len(df)
+        i=df.iloc[-1][0]+1
         print(f'Continue {dffile} from index {i}')
     else:
         response=input("Do you want to reset df.csv? yes/*   ")
@@ -514,7 +501,7 @@ def run():
     for c in generate_indexes():
         if c[0]<i:
             continue
-        #input(f'i is {i}')
+        input(f'i is {i}')
         print("\n\n\n*****************\n\n\n")
         print(f'Case:{c[0]}/{c[1]}')
         print(f'quantizing conv layers from {c[2]} to {c[3]}')
@@ -533,7 +520,7 @@ def run():
         print(f"{m_name} Evaluation finished time: {end_time-start_time}")
         
         os.remove(m_name)
-        df.loc[c[0]]=[_name,mAP]
+        df.iloc[c[0]]=[_name,mAP]
         dct={"i":c[0],"start_conv":c[2], "end_conv":c[3], "start_index":c[4], "end_index":c[5],"mAP":mAP, "APs":APs}
         Data.append(dct)
         if c[0]%5==0:
