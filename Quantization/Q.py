@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: py:light,ipynb
+#     formats: ipynb,py
 #     text_representation:
 #       extension: .py
 #       format_name: light
@@ -74,6 +74,7 @@ import threading
 import pandas as pd 
 import sys
 import os
+import itertools
 cur_dir=os.getcwd()
 sys.path.append(cur_dir+'/../Evaluation/')
 import eval_multiThread2 as tt
@@ -474,10 +475,10 @@ def generate_indexes(start_conv=-1,end_conv=-1):
         #print(f'index {start_index} to {end_index}')
         #print(all_layers[start_index:end_index])
         #ttt=explore_combinations2(calibrated_model,suspected_layers=ss,name='2-3.tflite')'''
-        next_start_conv=cases[i+1]
-        next_end_conv=cases
+        ##next_start_conv=cases[i+1]
+        ##next_end_conv=cases
         yield i,N_cases,start_conv,end_conv,start_index,end_index,suspend
-        
+
 
 
 # +
@@ -512,14 +513,18 @@ def run():
             return
         
     for c in generate_indexes():
-        if c[0]<i:
-            continue
+        '''if c[0]<i:
+            continue'''
         #input(f'i is {i}')
         print("\n\n\n*****************\n\n\n")
         print(f'Case:{c[0]}/{c[1]}')
         print(f'quantizing conv layers from {c[2]} to {c[3]}')
-        print(f'index {c[4]} to {c[5]}')        
+        print(f'index {c[4]} to {c[5]}')  
         _name=f'{c[2]}-{c[3]}'
+        if df[df['name']==_name].shape[0]:
+            print("Already evaluated...")
+            continue
+        
         m_name=output+_name+'.tflite'
         p_name=_name+'.pkl'
         
@@ -536,32 +541,158 @@ def run():
         df.loc[c[0]]=[_name,mAP]
         dct={"i":c[0],"start_conv":c[2], "end_conv":c[3], "start_index":c[4], "end_index":c[5],"mAP":mAP, "APs":APs}
         Data.append(dct)
-        if c[0]%5==0:
+        if c[0]%5==0 or True:
             df.to_csv(dffile)
             with open(pklDatafile,'wb') as f:
                 pickle.dump(Data,f)
 
+                
 
+
+# # +
+def generate_indexes_2(start_conv=-1,end_conv=-1):
+    ####
+    layer_stats = pd.read_csv(RESULTS_FILE)
+    all_layers=list(layer_stats[:]['tensor_name'])
+    conv_layers=[]
+    #print(all_layers)
+    for i,layer in enumerate(all_layers):
+        if 'conv' in layer or 'StatefulPartitionedCall' in layer:
+            conv_layers.append(layer)
+            
+    _n=len(conv_layers)
+    #cases=[ [ conv_layers[start:end+1] for end in range(start,_n) ] for start in range(0,_n) ]
+    #n_cases = [len(case) for case in cases ]
+    #N_cases = sum(n_cases)
+    #cases = list(itertools.combinations(conv_layers, 2))
+    _convs=list(range(len(conv_layers)))
+    cases=list(itertools.combinations(_convs, 1))
+    cases+=list(itertools.combinations(_convs, 2))
+    N_cases = len(cases)
+    print(f'Total layers:{len(all_layers)}  Convs:{len(conv_layers)}  number of cases:{N_cases}')
+    #flatted_cases=[c for case in cases for c in case]
+    last_conv_indx=len(conv_layers)-1
+    last_conv=conv_layers[-1]
+    for i,case in enumerate(cases):
+        print(f'case:\n{case}')
+        suspend=all_layers[:]
+        quant=[]
+        for layer in case:           
+            start_index=all_layers.index(conv_layers[layer])
+            if layer==last_conv_indx:
+                end_index=len(all_layers)-1
+            else:
+                end_index=all_layers.index(conv_layers[layer+1])
+            block=[all_layers[j] for j in range(start_index,end_index)]
+            quant+=block
+        print(quant)         
+        suspend=[elem for elem in all_layers if elem not in quant]
+        print(len(quant),len(suspend),len(all_layers))
+        
+        
+        yield i,N_cases,tuple(case),suspend
+
+
+# + endofcell="------"
+# # +
+def extract_one_two_from_consequtives():
+    m=pd.read_csv('df.csv',index_col=0)
+    m['layers'] = m['name'].str.split('-').apply(lambda x: tuple(range(int(x[0]), int(x[1])+1)))
+    #pd.set_option('display.max_rows',3000)
+    k=1
+    m_1=m[m['layers'].apply(len) == 1]
+    m_2=m[m['layers'].apply(len) == 2]
+    #m_filtered = m[m['layers'].apply(len).isin([1,2])]
+    ms=pd.concat([m_1,m_2],ignore_index=True)
+    ms.to_csv("extracted_df.csv",index=False)
+    return ms
+#extract_one_two_from_consequtives()
 
 
 # +
+#t=extract_one_two_from_consequtives()
+#t[t['layers'].astype(str)=='(0,)']
+
+# + endofcell="-------"
+def run_2():
+    output=os.getcwd()+"/cases/"
+    os.makedirs(output, exist_ok=True)
+    dffile="df2.csv"
+    if os.path.isfile(dffile):
+        df=pd.read_csv(dffile,index_col=0)
+        #i=df.iloc[-1][0]+1
+        i=len(df)
+        print(f'Continue {dffile} from index {i}')
+    else:
+        response=input("Do you want to reset df.csv? yes/*   ")
+        if response=="yes" or response=="Yes":
+            df = pd.DataFrame(columns=["name","mAP"])
+        else:
+            return
+        
+    
+    extracted_df=extract_one_two_from_consequtives()
+    
+    for c in generate_indexes_2():
+        
+        print("\n\n\n*****************\n\n\n")
+        print(f'Case:{c[0]}/{c[1]}')
+        print(f'quantizing conv layers {c[2]}')
+        _name=f'{c[2]}'
+        if df[df['name']==_name].shape[0]:
+            print("Already evaluated...")
+            continue
+            
+        
+        if extracted_df[extracted_df['layers'].astype(str)==_name].shape[0]:
+            mAP=extracted_df[extracted_df['layers'].astype(str)==_name]['mAP'].iloc[0]
+            df.loc[c[0]]=[_name,mAP]
+            df.to_csv(dffile)
+            print('extract')
+            continue
+        
+        
+        m_name=output+_name+'.tflite'
+        p_name=_name+'.pkl'
+        
+        start_time=time.time()
+        explore_combinations2(calibrated_model,suspected_layers=c[-1],name=m_name)
+        end_time=time.time()
+        print(f"{m_name} Quantization finished time: {end_time-start_time}")
+        
+        mAP,APs=evaluate(model_name=m_name,pkl_name=p_name)
+        end_time=time.time()
+        print(f"{m_name} Evaluation finished time: {end_time-start_time}")
+        
+        os.remove(m_name)
+        df.loc[c[0]]=[_name,mAP]
+        
+        if c[0]%5==0 or True:
+            df.to_csv(dffile)
+            
+
+# # # +
+# # # # +
 #evaluate([])
+### run is for consequtive layer quantizations 
+### and run_2 is for select two layer quantization
 if __name__ == "__main__":
     initialize()
     if os.path.isfile(RESULTS_FILE):
-        run()
+        run_2()
     else:
         quantized_model=quantize(model,dataset)
         debugger=explore(model,dataset)
         run_debugger(debugger,RESULTS_FILE)
-        run()
+        run_2()
 
 
-# # +
+# # # + endofcell="-----"
+# # # # # +
 
-# + endofcell="----"
-# # # +
-def run2():
+# # # # + endofcell="----"
+# # # # # # +
+def _run2():
     ouput=os.getcwd()+"/cases/"
     os.makedirs(output, exist_ok=True)
     
@@ -674,7 +805,7 @@ def run_keras():
         thread.join()
 
 
-# # + endofcell="--"
+# # # # # + endofcell="--"
 # -
 
 '''
@@ -693,7 +824,7 @@ calibrated_model=calibrate(model,dataset)
 selective_unquantized=explore_combinations(calibrated_model)'''
 
 
-# # # # # # %%timeit -n 1 -r 1
+# # # # # # # # # %%timeit -n 1 -r 1
 def ttt():
     QuantizedName='Yolo_files/1/YoloV3_quztized.tflite'
     model = interpreter_wrapper.Interpreter(model_path=QuantizedName)
@@ -728,3 +859,15 @@ def ttt():
 # ---
 # --
 # ----
+# -----
+# ------
+# -------
+
+
+a=list(range(10))
+import itertools
+cases=list(itertools.combinations(a, 1))
+cases+=list(itertools.combinations(a, 2))
+cases
+
+
