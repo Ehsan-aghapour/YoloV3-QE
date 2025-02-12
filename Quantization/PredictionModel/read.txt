@@ -1,0 +1,8 @@
+Predict.ipynb is the main file
+run it with env_predict_acc (on gpu server with env_pred_server)
+gpusync.sh for sending to gpu server except env_*
+gpusync_rec.sh for receiving from server except env_*
+
+Modles:
+m1.h5 is the best model that predict accuray (regression model) [best_model.h5]
+m2.h5 is the best model that compare two design points [best_compare_model.h5]

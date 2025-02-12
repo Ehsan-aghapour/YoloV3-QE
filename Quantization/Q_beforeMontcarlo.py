@@ -773,123 +773,7 @@ def run_3():
         
         if c[0]%5==0 or True:
             df.to_csv(dffile)
-
-
-
-def generate_indexes_MontCarlo(Num_points=4000):
-    ####
-    layer_stats = pd.read_csv(RESULTS_FILE)
-    all_layers=list(layer_stats[:]['tensor_name'])
-    conv_layers=[]
-    #print(all_layers)
-    for i,layer in enumerate(all_layers):
-        if 'conv' in layer or 'StatefulPartitionedCall' in layer:
-            conv_layers.append(layer)
             
-    _n=len(conv_layers)
-    #cases=[ [ conv_layers[start:end+1] for end in range(start,_n) ] for start in range(0,_n) ]
-    #n_cases = [len(case) for case in cases ]
-    #N_cases = sum(n_cases)
-    #cases = list(itertools.combinations(conv_layers, 2))
-    _convs=list(range(len(conv_layers)))
-    #cases=list(itertools.combinations(_convs, 1))
-    #cases+=list(itertools.combinations(_convs, 2))
-
-    ###cases=list(itertools.combinations(_convs, 3))
-    
-
-    N_cases = Num_points
-    print(f'Total layers:{len(all_layers)}  Convs:{len(conv_layers)}  number of cases:{Num_points}')
-    #flatted_cases=[c for case in cases for c in case]
-    last_conv_indx=len(conv_layers)-1
-    last_conv=conv_layers[-1]
-    #random.shuffle(cases)
-    #for i,case in enumerate(cases):
-    sequences=[np.ones(75, dtype=int), np.zeros(75, dtype=int)]
-    for i in range(Num_points):
-        binary_sequence = np.random.randint(2, size=75)
-    #for i,binary_sequence in enumerate(sequences):
-        #
-        # Find the indices where the value is 1
-        indices_of_ones = np.where(binary_sequence == 1)[0]
-        indices_of_zeros = np.where(binary_sequence == 0)[0]
-        case=indices_of_ones
-        print(f'case:\n{case}')
-        suspend=all_layers[:]
-        quant=[]
-        for layer in case:           
-            start_index=all_layers.index(conv_layers[layer])
-            if layer==last_conv_indx:
-                end_index=len(all_layers)-1
-            else:
-                end_index=all_layers.index(conv_layers[layer+1])
-            block=[all_layers[j] for j in range(start_index,end_index)]
-            quant+=block
-        print(quant)         
-        suspend=[elem for elem in all_layers if elem not in quant]
-        print(len(quant),len(suspend),len(all_layers))
-        
-        
-        yield i,N_cases,tuple(case),suspend  
-
-
-def run_MontCarlo(_Num_points=4000):
-    output=os.getcwd()+"/cases/"
-    os.makedirs(output, exist_ok=True)
-    dffile="df_MontCarlo.csv"
-    if os.path.isfile(dffile):
-        df=pd.read_csv(dffile,index_col=0)
-        #i=df.iloc[-1][0]+1
-        i=len(df)
-        print(f'Continue {dffile} from index {i}')
-    else:
-        response=input(f"Do you want to reset {dffile}? yes/*   ")
-        if response=="yes" or response=="Yes":
-            df = pd.DataFrame(columns=["name","mAP"])
-        else:
-            return
-        
-    cntr=0
-    
-    for c in generate_indexes_MontCarlo(Num_points=_Num_points):
-        
-        print("\n\n\n*****************\n\n\n")
-        print(f'Case:{c[0]}/{c[1]}')
-        print(f'quantizing conv layers {c[2]}')
-        _name=f'{c[2]}'
-        
-        if df[df['name']==_name].shape[0]:
-            print("Already evaluated...")
-            continue
-            
-        _name=_name.replace(' ','')
-        
-        if df[df['name']==_name].shape[0]:
-            print("Already evaluated...")
-            continue
-        
-        
-        m_name=output+_name+'.tflite'
-        p_name=_name+'.pkl'
-        
-        start_time=time.time()
-        explore_combinations2(calibrated_model,suspected_layers=c[-1],name=m_name)
-        end_time=time.time()
-        print(f"{m_name} Quantization finished time: {end_time-start_time}")
-        
-        mAP,APs=evaluate(model_name=m_name,pkl_name=p_name)
-        end_time=time.time()
-        print(f"{m_name} Evaluation finished time: {end_time-start_time}")
-        
-        os.remove(m_name)
-        #df.loc[c[0]]=[_name,mAP]
-        df.loc[len(df)]=[_name,mAP]
-        
-        if c[0]%5==0 or True:
-            df.to_csv(dffile)
-
-        
-                
 
 # # # # +
 # # # # # +
@@ -897,12 +781,10 @@ def run_MontCarlo(_Num_points=4000):
 ### run is for consequtive layer quantizations 
 ### and run_2 is for select two layer quantization
 ## and run_3 for three layers
-## and for Montecarlo
 if __name__ == "__main__":
     initialize()
     if os.path.isfile(RESULTS_FILE):
-        #run_3()
-        run_MontCarlo(_Num_points=6000)
+        run_3()
     else:
         quantized_model=quantize(model,dataset)
         debugger=explore(model,dataset)

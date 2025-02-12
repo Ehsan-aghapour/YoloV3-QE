@@ -34,6 +34,7 @@ def _conv_block(inp, convs, skip=True):
 
 def make_yolov3_model():
 	input_image = Input(shape=(None, None, 3))
+	input_image = Input(shape=(608, 608, 3))
 	# Layer  0 => 4
 	x = _conv_block(input_image, [{'filter': 32, 'kernel': 3, 'stride': 1, 'bnorm': True, 'leaky': True, 'layer_idx': 0},
 								  {'filter': 64, 'kernel': 3, 'stride': 2, 'bnorm': True, 'leaky': True, 'layer_idx': 1},

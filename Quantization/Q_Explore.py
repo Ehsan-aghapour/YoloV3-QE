@@ -6,11 +6,11 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.14.5
+#       jupytext_version: 1.14.4
 #   kernelspec:
-#     display_name: qe
+#     display_name: env_qe
 #     language: python
-#     name: qe
+#     name: env_qe
 # ---
 
 # + [markdown] id="KimMZUVqcJ8_"
@@ -97,7 +97,7 @@ GPU=1
 
 p="/home/ehsan/UvA/Accuracy/Keras/"
 p_server="/home/ehsan/Accuracy/"
-if server:
+if server==1:
     p=p_server
 data_dir = p+"YOLOV3/Dataset/val2017"
 image_size = (608, 608)
@@ -805,11 +805,8 @@ def generate_indexes_MontCarlo(Num_points=4000):
     last_conv=conv_layers[-1]
     #random.shuffle(cases)
     #for i,case in enumerate(cases):
-    sequences=[np.ones(75, dtype=int), np.zeros(75, dtype=int)]
     for i in range(Num_points):
         binary_sequence = np.random.randint(2, size=75)
-    #for i,binary_sequence in enumerate(sequences):
-        #
         # Find the indices where the value is 1
         indices_of_ones = np.where(binary_sequence == 1)[0]
         indices_of_zeros = np.where(binary_sequence == 0)[0]
@@ -830,7 +827,7 @@ def generate_indexes_MontCarlo(Num_points=4000):
         print(len(quant),len(suspend),len(all_layers))
         
         
-        yield i,N_cases,tuple(case),suspend  
+        yield i,N_cases,tuple(case),suspend           
 
 
 def run_MontCarlo(_Num_points=4000):
@@ -857,13 +854,6 @@ def run_MontCarlo(_Num_points=4000):
         print(f'Case:{c[0]}/{c[1]}')
         print(f'quantizing conv layers {c[2]}')
         _name=f'{c[2]}'
-        
-        if df[df['name']==_name].shape[0]:
-            print("Already evaluated...")
-            continue
-            
-        _name=_name.replace(' ','')
-        
         if df[df['name']==_name].shape[0]:
             print("Already evaluated...")
             continue
@@ -882,8 +872,7 @@ def run_MontCarlo(_Num_points=4000):
         print(f"{m_name} Evaluation finished time: {end_time-start_time}")
         
         os.remove(m_name)
-        #df.loc[c[0]]=[_name,mAP]
-        df.loc[len(df)]=[_name,mAP]
+        df.loc[c[0]]=[_name,mAP]
         
         if c[0]%5==0 or True:
             df.to_csv(dffile)
@@ -902,7 +891,7 @@ if __name__ == "__main__":
     initialize()
     if os.path.isfile(RESULTS_FILE):
         #run_3()
-        run_MontCarlo(_Num_points=6000)
+        run_MontCarlo(_Num_points=4000)
     else:
         quantized_model=quantize(model,dataset)
         debugger=explore(model,dataset)
